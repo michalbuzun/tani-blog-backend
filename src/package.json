@@ -1,0 +1,14 @@
+{
+  "name": "jsx-cms-backend-2",
+  "version": "1.0.0",
+  "description": "",
+  "main": "get_all_posts.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ksuid": "^3.0.0"
+  }
+}

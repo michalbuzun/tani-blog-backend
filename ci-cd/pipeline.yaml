@@ -1,0 +1,156 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CodePipeline for taniblog app in next.js
+
+Resources:
+  Codepipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ArtifactStore:
+        Location: !Ref ArtifactBucket
+        Type: S3
+      Name: code-pipeline-taniblog-next-js
+      RoleArn: !GetAtt CodepipelineRole.Arn
+      Stages:
+        - Name: SourceCheckout
+          Actions:
+            - Name: RepoCheckout
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: 1
+              Configuration:
+                BranchName: master
+                RepositoryName: tani-blog
+              OutputArtifacts:
+                - Name: source
+
+        - Name: Build
+          Actions:
+            - Name: BuildByCodeBuild
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: source
+              OutputArtifacts:
+                - Name: !Ref ArtifactBucket
+
+        - Name: DeployToS3
+          Actions:
+            - Name: deployToS3
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: S3
+                Version: 1
+              RunOrder: 1
+              Configuration:
+                BucketName: <REMOVED>
+                Extract: true
+              InputArtifacts:
+                - Name: !Ref ArtifactBucket
+
+            - Name: clearCache
+              ActionTypeId:
+                Category: Invoke
+                Owner: AWS
+                Provider: Lambda
+                Version: 1
+              RunOrder: 2
+              Configuration:
+                FunctionName: !Ref ClearCacheLambda
+
+  CodepipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: codepipeline-taniblog-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      Description: Role for codepipline
+
+  CodepipelinePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: codepipeline-taniblog-policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - codecommit:*
+              - s3:*
+              - codebuild:*
+              - logs:*
+              - iam:*
+              - lambda:*
+            Resource: "*"
+      Roles:
+        - !Ref CodepipelineRole
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: codebuild-for-taniblog
+      Artifacts:
+        Type: CODEPIPELINE
+      Description: codebuild project for taniblog
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:6.0
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: S3Bucket
+            Value: !Ref ArtifactBucket
+          - Name: EnvironmentType
+            Value: prod
+
+      ServiceRole: !GetAtt CodeBuildProjectRole.Arn
+      Source:
+        Type: CODEPIPELINE
+
+  CodeBuildProjectRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: codebuild-taniblog-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      Description: Role for codebuild
+
+  CodeBuildProjectPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: codebuild-taniblog-policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - codecommit:*
+              - s3:*
+              - logs:*
+            Resource: "*"
+      Roles:
+        - !Ref CodeBuildProjectRole
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain

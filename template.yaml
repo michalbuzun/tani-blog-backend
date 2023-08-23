@@ -1,0 +1,215 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  tani blog template
+
+Parameters:
+  CognitoArn:
+    Type: String
+    Default: <REMOVED>
+    Description: AWS cognito created for the app, to authorize api endpoints
+  StepFunctionsArn:
+    Type: String
+    Default: <REMOVED>
+    Description: Step funcitons must be created to properly deploy changes in app
+  ImagesBucketName:
+    Type: String
+    Default: <REMOVED>
+  ImagesBucketURL:
+    Type: String
+    Default: <REMOVED>
+  ImagesBucketArn:
+    Type: String
+    Default: <REMOVED>
+
+Globals:
+  Function:
+    Timeout: 3
+    Environment:
+      Variables:
+        POSTS_TABLE: !GetAtt PostsTable.Arn
+        IMAGES_BUCKET: !Ref ImagesBucketName
+        IMAGES_BUCKET_URL: !Ref ImagesBucketURL
+        STEP_FUNCTIONS_ARN: !Ref StepFunctionsArn
+
+Resources:
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      BinaryMediaTypes:
+        - multipart/form-data
+      Cors:
+        AllowMethods: "'*'"
+        AllowHeaders: "'*'"
+        AllowOrigin: "'*'"
+      Auth:
+        DefaultAuthorizer: MyCognitoAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
+        Authorizers:
+          MyCognitoAuthorizer:
+            UserPoolArn: !Ref CognitoArn
+
+  GetAllPosts:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: get_all_posts.handler
+      Runtime: nodejs14.x
+      Policies:
+        - AmazonDynamoDBFullAccess
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: /posts
+            Method: GET
+
+  GetAllPostsPublic:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: get_all_posts.handler
+      Runtime: nodejs14.x
+      Policies:
+        - AmazonDynamoDBFullAccess
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: /public/posts
+            Method: GET
+            Auth:
+              Authorizer: "NONE"
+
+  GetPost:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: get_post.handler
+      Runtime: nodejs14.x
+      Policies:
+        - AmazonDynamoDBFullAccess
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: /post/{postid}
+            Method: GET
+
+  GetPostPublic:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: get_post.handler
+      Runtime: nodejs14.x
+      Policies:
+        - AmazonDynamoDBFullAccess
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: /public/post/{postid}
+            Method: GET
+            Auth:
+              Authorizer: "NONE"
+
+  UpdatePost:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: update_post.handler
+      Runtime: nodejs14.x
+      Policies:
+        - AmazonDynamoDBFullAccess
+        - AWSStepFunctionsFullAccess
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: /post/{postid}
+            Method: POST
+
+  CreatePost:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: create_post.handler
+      Runtime: nodejs14.x
+      Policies:
+        - AmazonDynamoDBFullAccess
+        - AWSStepFunctionsFullAccess
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: /post
+            Method: POST
+
+  DeletePost:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: delete_post.handler
+      Runtime: nodejs14.x
+      Policies:
+        - AmazonDynamoDBFullAccess
+        - AWSStepFunctionsFullAccess
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: /post/{postid}
+            Method: DELETE
+
+  UploadFile:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: upload_file.handler
+      Runtime: nodejs14.x
+      Policies:
+        - Statement:
+            - Sid: S3BucketWithImagesAccessPolicy
+              Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:GetObject
+              Resource: "<REMOVED>*"
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: /uploadfile
+            Method: POST
+
+  PostsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      KeySchema:
+        - AttributeName: postId
+          KeyType: HASH
+
+      GlobalSecondaryIndexes:
+        - IndexName: slug
+          KeySchema:
+            - AttributeName: slug
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+      AttributeDefinitions:
+        - AttributeName: postId
+          AttributeType: S
+        - AttributeName: slug
+          AttributeType: S
+
+      BillingMode: PAY_PER_REQUEST
